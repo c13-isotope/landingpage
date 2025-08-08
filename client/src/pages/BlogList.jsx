@@ -12,46 +12,42 @@ export default function BlogList() {
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const q = (sp.get("q") || "").trim();
 
-  // Use absolute API base in production (Vercel) if provided; else use relative path (works with dev proxy)
-  const API_BASE = import.meta.env.VITE_API_BASE || "";
+  // Build a safe API base (strip trailing slash); if empty, use relative path (dev proxy)
+  const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
+  const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
-  // Build endpoint based on search or list
+  // Build endpoint based on search/list
   const endpoint = useMemo(() => {
     const basePath = q ? "/api/blog/public/search" : "/api/blog/public/list";
     const params = new URLSearchParams({ page: String(page), limit: "5" });
     if (q) params.set("q", q);
-    // Prepend API_BASE if set, otherwise keep relative
     return `${API_BASE}${basePath}?${params.toString()}`;
   }, [API_BASE, page, q]);
 
-  // Set document title for SEO/UX
+  // SEO title
   useEffect(() => {
-    const title = q ? `Search: "${q}" | Blog | NextGen CMC` : `Blog | NextGen CMC`;
-    document.title = title;
+    document.title = q ? `Search: "${q}" | Blog | NextGen CMC` : `Blog | NextGen CMC`;
   }, [q, page]);
 
   // Fetch list
   useEffect(() => {
-    let alive = true;
+    const controller = new AbortController();
     (async () => {
-      setLoading(true);
-      setErr("");
       try {
-        const res = await fetch(endpoint);
+        setLoading(true);
+        setErr("");
+        const res = await fetch(endpoint, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        if (!alive) return;
         setBlogs(Array.isArray(data.items) ? data.items : []);
         setTotalPages(Number(data.totalPages) || 1);
       } catch (e) {
-        if (alive) setErr(e.message || "Failed to load blogs");
+        if (e.name !== "AbortError") setErr(e.message || "Failed to load blogs");
       } finally {
-        if (alive) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => controller.abort();
   }, [endpoint]);
 
   const setPage = (p) =>
@@ -119,12 +115,13 @@ export default function BlogList() {
           style={{ flex: 1, padding: 8, border: "1px solid #ccc", borderRadius: 6 }}
           aria-label="Search posts"
         />
-        <button type="submit">Search</button>
+        <button type="submit" disabled={loading}>Search</button>
         {q ? (
           <button
             type="button"
             onClick={() => setSp(new URLSearchParams({ page: "1" }))}
             aria-label="Clear search"
+            disabled={loading}
           >
             Clear
           </button>
@@ -163,13 +160,13 @@ export default function BlogList() {
           justifyContent: "center",
         }}
       >
-        <button onClick={() => setPage(page - 1)} disabled={page <= 1}>
+        <button onClick={() => setPage(page - 1)} disabled={page <= 1 || loading}>
           Previous
         </button>
         <span>
           Page {page} of {totalPages}
         </span>
-        <button onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
+        <button onClick={() => setPage(page + 1)} disabled={page >= totalPages || loading}>
           Next
         </button>
       </div>
