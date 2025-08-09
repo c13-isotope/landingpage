@@ -1,9 +1,11 @@
+// client/src/pages/AdminNewBlog.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js";
 
+// Markdown/Code setup
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -17,6 +19,11 @@ marked.setOptions({
 
 export default function AdminNewBlog() {
   const navigate = useNavigate();
+
+  // Use API base like in BlogList so production hits Render, dev can use proxy.
+  const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
+  const API_BASE = RAW_API_BASE.replace(/\/+$/, ""); // strip trailing slashes
+
   const [adminKey, setAdminKey] = useState("");
   const [form, setForm] = useState({
     title: "",
@@ -37,7 +44,8 @@ export default function AdminNewBlog() {
   const onChange = (e) => {
     const { name, value } = e.target;
     setForm((f) => ({ ...f, [name]: value }));
-    validateField(name, value);
+    // live validate single field
+    setFieldErrors((prev) => ({ ...prev, [name]: validateOne(name, value) }));
   };
 
   const previewHtml = useMemo(
@@ -45,40 +53,44 @@ export default function AdminNewBlog() {
     [form.content]
   );
 
-  const validateField = (name, value) => {
-    let message = "";
-    if (name === "adminKey" && !value.trim()) {
-      message = "Admin key is required.";
+  // ----- Validation -----
+  function validateOne(name, value) {
+    const v = (value ?? "").trim();
+    switch (name) {
+      case "adminKey":
+        return adminKey.trim() ? "" : "Admin key is required.";
+      case "title":
+        return v.length >= 3 ? "" : "Title must be at least 3 characters.";
+      case "slug":
+        return v && v.length < 3
+          ? "Slug must be at least 3 characters (or leave it blank)."
+          : "";
+      case "excerpt":
+        return v.length >= 10 ? "" : "Excerpt must be at least 10 characters.";
+      case "content":
+        return v.length >= 10 ? "" : "Content must be at least 10 characters.";
+      case "tags":
+        return v && v.split(",").length > 5
+          ? "Maximum 5 tags allowed."
+          : "";
+      default:
+        return "";
     }
-    if (name === "title" && value.trim().length < 3) {
-      message = "Title must be at least 3 characters.";
-    }
-    if (name === "slug" && value && value.trim().length < 3) {
-      message = "Slug must be at least 3 characters (or leave it blank).";
-    }
-    if (name === "excerpt" && value.trim().length < 10) {
-      message = "Excerpt must be at least 10 characters.";
-    }
-    if (name === "content" && value.trim().length < 10) {
-      message = "Content must be at least 10 characters.";
-    }
-    if (name === "tags" && value.trim() && value.split(",").length > 5) {
-      message = "Maximum 5 tags allowed.";
-    }
-    setFieldErrors((prev) => ({ ...prev, [name]: message }));
-  };
+  }
 
-  const validateAll = () => {
-    let errors = {};
-    validateField("adminKey", adminKey);
-    validateField("title", form.title);
-    validateField("slug", form.slug);
-    validateField("excerpt", form.excerpt);
-    validateField("content", form.content);
-    validateField("tags", form.tags);
+  function validateAll() {
+    const errors = {
+      adminKey: validateOne("adminKey", adminKey),
+      title: validateOne("title", form.title),
+      slug: validateOne("slug", form.slug),
+      excerpt: validateOne("excerpt", form.excerpt),
+      content: validateOne("content", form.content),
+      tags: validateOne("tags", form.tags),
+    };
     setFieldErrors(errors);
     return Object.values(errors).every((m) => !m);
-  };
+  }
+  // -----------------------
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -92,16 +104,29 @@ export default function AdminNewBlog() {
         slug: form.slug.trim(),
         excerpt: form.excerpt.trim(),
         content: form.content,
-        tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         status: form.status,
       };
-      const res = await fetch("/api/blog", {
+
+      // IMPORTANT: use API_BASE (falls back to relative if empty in dev)
+      const url = `${API_BASE}/api/blog`;
+      const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey,
+        },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Create failed (HTTP ${res.status})`);
+      }
+
       localStorage.setItem("adminKey", adminKey);
       navigate(`/blog/${data.slug}`);
     } catch (e) {
@@ -118,7 +143,6 @@ export default function AdminNewBlog() {
       {err && <p style={{ color: "crimson" }}>Error: {err}</p>}
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        {/* Admin Key */}
         <label>
           Admin Key
           <input
@@ -126,7 +150,7 @@ export default function AdminNewBlog() {
             value={adminKey}
             onChange={(e) => {
               setAdminKey(e.target.value);
-              validateField("adminKey", e.target.value);
+              setFieldErrors((p) => ({ ...p, adminKey: validateOne("adminKey", e.target.value) }));
             }}
             style={{ width: "100%", padding: 8 }}
             placeholder="x-admin-key header"
@@ -134,7 +158,6 @@ export default function AdminNewBlog() {
           {fieldErrors.adminKey && <div style={{ color: "red" }}>{fieldErrors.adminKey}</div>}
         </label>
 
-        {/* Title */}
         <label>
           Title
           <input
@@ -146,7 +169,6 @@ export default function AdminNewBlog() {
           {fieldErrors.title && <div style={{ color: "red" }}>{fieldErrors.title}</div>}
         </label>
 
-        {/* Slug */}
         <label>
           Slug (optional — auto from title if left blank)
           <input
@@ -158,7 +180,6 @@ export default function AdminNewBlog() {
           {fieldErrors.slug && <div style={{ color: "red" }}>{fieldErrors.slug}</div>}
         </label>
 
-        {/* Excerpt */}
         <label>
           Excerpt
           <input
@@ -170,7 +191,6 @@ export default function AdminNewBlog() {
           {fieldErrors.excerpt && <div style={{ color: "red" }}>{fieldErrors.excerpt}</div>}
         </label>
 
-        {/* Content + Preview */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label>
             Content (Markdown)
@@ -192,7 +212,6 @@ export default function AdminNewBlog() {
           </div>
         </div>
 
-        {/* Tags */}
         <label>
           Tags (comma separated)
           <input
@@ -204,7 +223,6 @@ export default function AdminNewBlog() {
           {fieldErrors.tags && <div style={{ color: "red" }}>{fieldErrors.tags}</div>}
         </label>
 
-        {/* Status */}
         <label>
           Status
           <select
