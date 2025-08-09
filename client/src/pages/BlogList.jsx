@@ -7,16 +7,15 @@ export default function BlogList() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [adminKey, setAdminKey] = useState("");
 
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
   const q = (sp.get("q") || "").trim();
 
-  // Build a safe API base (strip trailing slash); if empty, use relative path (dev proxy)
   const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
   const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
-  // Build endpoint based on search/list
   const endpoint = useMemo(() => {
     const basePath = q ? "/api/blog/public/search" : "/api/blog/public/list";
     const params = new URLSearchParams({ page: String(page), limit: "5" });
@@ -24,12 +23,14 @@ export default function BlogList() {
     return `${API_BASE}${basePath}?${params.toString()}`;
   }, [API_BASE, page, q]);
 
-  // SEO title
+  useEffect(() => {
+    setAdminKey(localStorage.getItem("adminKey") || "");
+  }, []);
+
   useEffect(() => {
     document.title = q ? `Search: "${q}" | Blog | NextGen CMC` : `Blog | NextGen CMC`;
   }, [q, page]);
 
-  // Fetch list
   useEffect(() => {
     const controller = new AbortController();
     (async () => {
@@ -66,6 +67,25 @@ export default function BlogList() {
     if (term) s.set("q", term);
     s.set("page", "1");
     setSp(s);
+  };
+
+  const handleDelete = async (id) => {
+    if (!adminKey) {
+      alert("Please enter your Admin Key to delete posts.");
+      return;
+    }
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/blog/${id}`, {
+        method: "DELETE",
+        headers: { "x-admin-key": adminKey },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setBlogs((prev) => prev.filter((b) => b._id !== id && b.id !== id));
+    } catch (e) {
+      alert(e.message || "Failed to delete post");
+    }
   };
 
   if (loading) {
@@ -105,8 +125,8 @@ export default function BlogList() {
     <div style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
       <h1 style={{ fontSize: 28, marginBottom: 16, textAlign: "center" }}>Latest Blog Posts</h1>
 
-      {/* Search */}
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      {/* Search & New Post */}
+      <form onSubmit={onSubmit} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <input
           type="text"
           name="q"
@@ -116,7 +136,7 @@ export default function BlogList() {
           aria-label="Search posts"
         />
         <button type="submit" disabled={loading}>Search</button>
-        {q ? (
+        {q && (
           <button
             type="button"
             onClick={() => setSp(new URLSearchParams({ page: "1" }))}
@@ -125,17 +145,44 @@ export default function BlogList() {
           >
             Clear
           </button>
-        ) : null}
+        )}
+        <Link
+          to="/admin/blog/new"
+          style={{
+            padding: "6px 12px",
+            background: "#4CAF50",
+            color: "#fff",
+            borderRadius: 6,
+            textDecoration: "none",
+          }}
+        >
+          + New Post
+        </Link>
       </form>
+
+      {/* Admin Key */}
+      <div style={{ marginBottom: 16 }}>
+        <input
+          type="password"
+          placeholder="x-admin-key (for delete)"
+          value={adminKey}
+          onChange={(e) => {
+            setAdminKey(e.target.value);
+            localStorage.setItem("adminKey", e.target.value);
+          }}
+          style={{ padding: 8, width: "100%", maxWidth: 300 }}
+        />
+      </div>
 
       {blogs.length === 0 ? (
         <div>No posts{q ? ` for “${q}”` : ""}.</div>
       ) : (
         blogs.map((b) => {
           const href = `/blog/${encodeURIComponent(b.slug || "")}`;
+          const id = b._id || b.id;
           return (
             <article
-              key={b._id || b.slug}
+              key={id}
               style={{ border: "1px solid #eee", borderRadius: 8, padding: 16, marginBottom: 12 }}
             >
               <h2 style={{ margin: "0 0 6px 0" }}>
@@ -145,6 +192,20 @@ export default function BlogList() {
                 {b.publishedAt ? new Date(b.publishedAt).toLocaleDateString() : "Draft"}
               </p>
               <p style={{ margin: 0 }}>{b.excerpt}</p>
+              <button
+                onClick={() => handleDelete(id)}
+                style={{
+                  marginTop: 8,
+                  background: "red",
+                  color: "white",
+                  border: "none",
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                }}
+              >
+                Delete
+              </button>
             </article>
           );
         })
