@@ -14,59 +14,73 @@ const app = express();
 // If behind a proxy (Render/Vercel/etc.)
 app.set("trust proxy", 1);
 
-/**
- * 2) CORS
- * CLIENT_ORIGIN supports comma-separated origins, e.g.:
- *   CLIENT_ORIGIN=http://localhost:5173,http://192.168.1.39:5173
- * To allow all (not recommended in prod), set CLIENT_ORIGIN=*
- */
-const raw = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-const allowAll = raw.trim() === "*";
-const allowList = allowAll
-  ? []
-  : raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+/* -------------------------------------------------------------------------- */
+/*  2) CORS (robust allow-list)                                               */
+/*      - CLIENT_ORIGIN is a comma-separated list of allowed origins          */
+/*        e.g. "http://localhost:5173,http://192.168.1.38:5173,https://mysite"
+/*      - Set CLIENT_ORIGIN="*" to allow all (NOT recommended for production) */
+/* -------------------------------------------------------------------------- */
+
+const rawOriginEnv = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+const allowAll = rawOriginEnv.trim() === "*";
+
+// normalize origins for reliable matching
+const normalizeOrigin = (o) =>
+  (o || "").toLowerCase().trim().replace(/\/$/, "");
+
+// build normalized allow-set
+const allowSet = allowAll
+  ? new Set()
+  : new Set(
+      rawOriginEnv
+        .split(",")
+        .map((s) => normalizeOrigin(s))
+        .filter(Boolean)
+    );
 
 console.log(
-  "CORS allowed origins:",
-  allowAll ? "*" : allowList.join(", ") || "(none)"
+  "CORS allowlist:",
+  allowAll ? "*" : Array.from(allowSet).join(", ") || "(none)"
 );
 
-// dynamic origin checker so multiple origins are accepted
-const corsOrigin = (origin, cb) => {
-  // allow requests with no Origin (curl, same-host, server-to-server)
-  if (!origin) return cb(null, true);
-  if (allowAll || allowList.includes(origin)) return cb(null, true);
-  return cb(new Error(`CORS blocked for origin: ${origin}`));
-};
-
+// origin checker used by cors()
 const corsOptions = {
-  origin: corsOrigin,
+  origin(origin, callback) {
+    // Same-origin requests or server-to-server calls sometimes have no Origin
+    if (!origin) return callback(null, true);
+
+    const norm = normalizeOrigin(origin);
+    if (allowAll || allowSet.has(norm)) return callback(null, true);
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
-  credentials: false,               // set true only if you start using cookies/auth
+  credentials: false, // set to true only if you start using cookies/auth headers
   optionsSuccessStatus: 204,
 };
 
 // Apply CORS to all requests
 app.use(cors(corsOptions));
 
-// Express v5: don’t use app.options('*', ...). Instead, end any preflight after CORS headers are set.
+// Gracefully end preflight requests after CORS headers were added
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 
-// 3) Env sanity (logs only)
+/* -------------------------------------------------------------------------- */
+/*  3) Env sanity (logs only)                                                 */
+/* -------------------------------------------------------------------------- */
 ["MONGO_URI", "ADMIN_KEY"].forEach((k) => {
   if (!process.env[k]) {
     console.warn(`⚠️  Missing ${k} in environment. Set it in .env or hosting config.`);
   }
 });
 
-// 4) JSON + basic rate limit
+/* -------------------------------------------------------------------------- */
+/*  4) JSON + basic rate limit                                                */
+/* -------------------------------------------------------------------------- */
 app.use(express.json());
 
 const apiLimiter = rateLimit({
@@ -77,7 +91,9 @@ const apiLimiter = rateLimit({
 });
 app.use("/api/", apiLimiter);
 
-// 5) Routes
+/* -------------------------------------------------------------------------- */
+/*  5) Routes                                                                 */
+/* -------------------------------------------------------------------------- */
 const messageRoute = require("./routes/messageRoute");
 const blogRoute = require("./routes/blogRoute");
 
