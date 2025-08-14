@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import "./App.css";
 
 import Navbar from "./components/Navbar";
+import AdminGate from "./components/AdminGate";
 
 import BlogList from "./pages/BlogList";
 import BlogDetail from "./pages/BlogDetail";
@@ -11,7 +12,7 @@ import AdminNewBlog from "./pages/AdminNewBlog";
 import AdminPosts from "./pages/AdminPosts";
 import AdminEditBlog from "./pages/AdminEditBlog";
 
-// NEW static pages
+// Static pages
 import About from "./pages/About";
 import Services from "./pages/Services";
 import Resources from "./pages/Resources";
@@ -20,7 +21,7 @@ import Newsletter from "./pages/Newsletter";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Terms from "./pages/Terms";
 
-// NEW: category listing
+// Category listing
 import Category from "./pages/Category";
 
 // Build a safe API base (strip trailing slash). If empty, relative paths work with the dev proxy.
@@ -85,7 +86,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="/blog" element={<BlogList />} />
           <Route path="/blog/:slug" element={<BlogDetail />} />
-          <Route path="/category/:slug" element={<Category />} /> {/* e.g., /category/ectd */}
+          <Route path="/category/:slug" element={<Category />} />
 
           {/* Static pages */}
           <Route path="/about" element={<About />} />
@@ -96,10 +97,31 @@ export default function App() {
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms" element={<Terms />} />
 
-          {/* Admin */}
-          <Route path="/admin/blog" element={<AdminPosts />} />
-          <Route path="/admin/blog/new" element={<AdminNewBlog />} />
-          <Route path="/admin/blog/edit/:slug" element={<AdminEditBlog />} />
+          {/* Admin (UI-gated; backend still checks x-admin-key) */}
+          <Route
+            path="/admin/blog"
+            element={
+              <AdminGate>
+                <AdminPosts />
+              </AdminGate>
+            }
+          />
+          <Route
+            path="/admin/blog/new"
+            element={
+              <AdminGate>
+                <AdminNewBlog />
+              </AdminGate>
+            }
+          />
+          <Route
+            path="/admin/blog/edit/:slug"
+            element={
+              <AdminGate>
+                <AdminEditBlog />
+              </AdminGate>
+            }
+          />
 
           {/* SPA fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

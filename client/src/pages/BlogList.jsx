@@ -7,7 +7,10 @@ export default function BlogList() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+
+  // admin
   const [adminKey, setAdminKey] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
@@ -23,8 +26,11 @@ export default function BlogList() {
     return `${API_BASE}${basePath}?${params.toString()}`;
   }, [API_BASE, page, q]);
 
+  // read admin key from localStorage on mount (do not expose in code)
   useEffect(() => {
-    setAdminKey(localStorage.getItem("adminKey") || "");
+    const key = localStorage.getItem("adminKey") || "";
+    setAdminKey(key);
+    setIsAdmin(Boolean(key));
   }, []);
 
   useEffect(() => {
@@ -71,7 +77,7 @@ export default function BlogList() {
 
   const handleDelete = async (id) => {
     if (!adminKey) {
-      alert("Please enter your Admin Key to delete posts.");
+      alert("Admin key missing. Open /admin/blog to set it first.");
       return;
     }
     if (!confirm("Are you sure you want to delete this post?")) return;
@@ -89,7 +95,11 @@ export default function BlogList() {
   };
 
   const fmtDate = (d) => {
-    try { return new Date(d).toLocaleDateString(); } catch { return "Draft"; }
+    try {
+      return new Date(d).toLocaleDateString();
+    } catch {
+      return "Draft";
+    }
   };
 
   const excerpt = (b) => {
@@ -136,7 +146,7 @@ export default function BlogList() {
         Latest Blog Posts
       </h1>
 
-      {/* Search & New Post */}
+      {/* Search + (Admin-only New Post) */}
       <form
         onSubmit={onSubmit}
         className="mt-6 flex flex-col sm:flex-row gap-3 items-stretch"
@@ -168,28 +178,39 @@ export default function BlogList() {
               Clear
             </button>
           )}
-          <Link
-            to="/admin/blog/new"
-            className="rounded-lg bg-black text-white px-3 py-2 hover:bg-neutral-800"
-          >
-            + New Post
-          </Link>
+
+          {/* Admin-only: New Post */}
+          {isAdmin && (
+            <Link
+              to="/admin/blog/new"
+              className="rounded-lg bg-black text-white px-3 py-2 hover:bg-neutral-800"
+            >
+              + New Post
+            </Link>
+          )}
         </div>
       </form>
 
-      {/* Admin Key */}
-      <div className="mt-4">
-        <input
-          type="password"
-          placeholder="x-admin-key (for delete)"
-          value={adminKey}
-          onChange={(e) => {
-            setAdminKey(e.target.value);
-            localStorage.setItem("adminKey", e.target.value);
-          }}
-          className="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
-        />
-      </div>
+      {/* Admin key field: only visible to admin so you can update/replace it.
+          To set it the first time, use the Admin screen (/admin/blog). */}
+      {isAdmin && (
+        <div className="mt-4">
+          <input
+            type="password"
+            placeholder="x-admin-key (for delete)"
+            value={adminKey}
+            onChange={(e) => {
+              setAdminKey(e.target.value);
+              localStorage.setItem("adminKey", e.target.value);
+              setIsAdmin(Boolean(e.target.value));
+            }}
+            className="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
+          />
+          <p className="mt-1 text-xs text-neutral-500">
+            Admin mode is active on this browser. Keep your key private.
+          </p>
+        </div>
+      )}
 
       {/* List */}
       {blogs.length === 0 ? (
@@ -219,9 +240,7 @@ export default function BlogList() {
                   </Link>
                 </h2>
 
-                <p className="mt-2 text-sm text-neutral-600">
-                  {excerpt(b)}
-                </p>
+                <p className="mt-2 text-sm text-neutral-600">{excerpt(b)}</p>
 
                 <div className="mt-4 flex items-center justify-between">
                   <Link
@@ -230,12 +249,16 @@ export default function BlogList() {
                   >
                     Read →
                   </Link>
-                  <button
-                    onClick={() => handleDelete(id)}
-                    className="text-xs rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50"
-                  >
-                    Delete
-                  </button>
+
+                  {/* Admin-only: Delete */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleDelete(id)}
+                      className="text-xs rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </article>
             );
