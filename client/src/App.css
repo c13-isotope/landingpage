@@ -1,5 +1,7 @@
-/* App.css */
-body {
-    font-family: sans-serif;
-  }
-  
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+.prose img { border-radius: .5rem; }

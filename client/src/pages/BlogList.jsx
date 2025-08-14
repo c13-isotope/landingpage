@@ -88,80 +88,97 @@ export default function BlogList() {
     }
   };
 
+  const fmtDate = (d) => {
+    try { return new Date(d).toLocaleDateString(); } catch { return "Draft"; }
+  };
+
+  const excerpt = (b) => {
+    if (b.excerpt) return b.excerpt;
+    const raw = (b.contentHtml || b.content || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[#*_>`]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return raw.length > 160 ? raw.slice(0, 160) + "…" : raw || " ";
+  };
+
   if (loading) {
     return (
-      <div style={{ display: "grid", placeItems: "center", height: "50vh" }}>
+      <div className="grid place-items-center h-[50vh]">
         <div
           aria-label="Loading posts"
           role="status"
-          style={{
-            width: 36,
-            height: 36,
-            border: "3px solid #ddd",
-            borderTopColor: "#333",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }}
+          className="w-9 h-9 rounded-full border-2 border-neutral-300 border-t-neutral-900 animate-spin"
         />
-        <style>
-          {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
-        </style>
       </div>
     );
   }
 
   if (err) {
     return (
-      <div style={{ padding: 16, color: "crimson" }}>
-        Error: {err}{" "}
-        <button onClick={() => window.location.reload()} style={{ marginLeft: 8 }}>
-          Retry
-        </button>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Error: {err}
+          <button
+            className="ml-3 inline-flex items-center rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-100"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 16, maxWidth: 800, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16, textAlign: "center" }}>Latest Blog Posts</h1>
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-neutral-900 text-center">
+        Latest Blog Posts
+      </h1>
 
       {/* Search & New Post */}
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+      <form
+        onSubmit={onSubmit}
+        className="mt-6 flex flex-col sm:flex-row gap-3 items-stretch"
+      >
         <input
           type="text"
           name="q"
           defaultValue={q}
           placeholder="Search posts (title, excerpt, content)…"
-          style={{ flex: 1, padding: 8, border: "1px solid #ccc", borderRadius: 6 }}
           aria-label="Search posts"
+          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
         />
-        <button type="submit" disabled={loading}>Search</button>
-        {q && (
+        <div className="flex gap-3">
           <button
-            type="button"
-            onClick={() => setSp(new URLSearchParams({ page: "1" }))}
-            aria-label="Clear search"
+            type="submit"
             disabled={loading}
+            className="rounded-lg border border-neutral-300 px-3 py-2 hover:bg-neutral-50"
           >
-            Clear
+            Search
           </button>
-        )}
-        <Link
-          to="/admin/blog/new"
-          style={{
-            padding: "6px 12px",
-            background: "#4CAF50",
-            color: "#fff",
-            borderRadius: 6,
-            textDecoration: "none",
-          }}
-        >
-          + New Post
-        </Link>
+          {q && (
+            <button
+              type="button"
+              onClick={() => setSp(new URLSearchParams({ page: "1" }))}
+              aria-label="Clear search"
+              disabled={loading}
+              className="rounded-lg border border-neutral-300 px-3 py-2 hover:bg-neutral-50"
+            >
+              Clear
+            </button>
+          )}
+          <Link
+            to="/admin/blog/new"
+            className="rounded-lg bg-black text-white px-3 py-2 hover:bg-neutral-800"
+          >
+            + New Post
+          </Link>
+        </div>
       </form>
 
       {/* Admin Key */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="mt-4">
         <input
           type="password"
           placeholder="x-admin-key (for delete)"
@@ -170,64 +187,79 @@ export default function BlogList() {
             setAdminKey(e.target.value);
             localStorage.setItem("adminKey", e.target.value);
           }}
-          style={{ padding: 8, width: "100%", maxWidth: 300 }}
+          className="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
         />
       </div>
 
+      {/* List */}
       {blogs.length === 0 ? (
-        <div>No posts{q ? ` for “${q}”` : ""}.</div>
+        <div className="mt-10 text-center text-neutral-500">
+          No posts{q ? ` for “${q}”` : ""}.
+        </div>
       ) : (
-        blogs.map((b) => {
-          const href = `/blog/${encodeURIComponent(b.slug || "")}`;
-          const id = b._id || b.id;
-          return (
-            <article
-              key={id}
-              style={{ border: "1px solid #eee", borderRadius: 8, padding: 16, marginBottom: 12 }}
-            >
-              <h2 style={{ margin: "0 0 6px 0" }}>
-                <Link to={href}>{b.title}</Link>
-              </h2>
-              <p style={{ margin: "0 0 8px 0", color: "#666" }}>
-                {b.publishedAt ? new Date(b.publishedAt).toLocaleDateString() : "Draft"}
-              </p>
-              <p style={{ margin: 0 }}>{b.excerpt}</p>
-              <button
-                onClick={() => handleDelete(id)}
-                style={{
-                  marginTop: 8,
-                  background: "red",
-                  color: "white",
-                  border: "none",
-                  padding: "4px 8px",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                }}
+        <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {blogs.map((b) => {
+            const href = `/blog/${encodeURIComponent(b.slug || "")}`;
+            const id = b._id || b.id;
+            return (
+              <article
+                key={id}
+                className="rounded-xl border border-neutral-200 p-5 bg-white hover:shadow-md transition-all"
               >
-                Delete
-              </button>
-            </article>
-          );
-        })
+                <div className="flex items-center gap-2 text-xs text-neutral-500">
+                  <time>{fmtDate(b.publishedAt)}</time>
+                  {Array.isArray(b.tags) && b.tags.length > 0 ? (
+                    <span>• {b.tags[0]}</span>
+                  ) : null}
+                </div>
+
+                <h2 className="mt-2 text-lg font-semibold leading-snug">
+                  <Link to={href} className="hover:underline">
+                    {b.title}
+                  </Link>
+                </h2>
+
+                <p className="mt-2 text-sm text-neutral-600">
+                  {excerpt(b)}
+                </p>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <Link
+                    to={href}
+                    className="text-sm font-medium text-neutral-900 hover:underline"
+                  >
+                    Read →
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(id)}
+                    className="text-xs rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
 
       {/* Pagination */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          marginTop: 16,
-          justifyContent: "center",
-        }}
-      >
-        <button onClick={() => setPage(page - 1)} disabled={page <= 1 || loading}>
+      <div className="mt-8 flex items-center justify-center gap-3 text-sm">
+        <button
+          onClick={() => setPage(page - 1)}
+          disabled={page <= 1 || loading}
+          className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50"
+        >
           Previous
         </button>
-        <span>
+        <span className="text-neutral-600">
           Page {page} of {totalPages}
         </span>
-        <button onClick={() => setPage(page + 1)} disabled={page >= totalPages || loading}>
+        <button
+          onClick={() => setPage(page + 1)}
+          disabled={page >= totalPages || loading}
+          className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50"
+        >
           Next
         </button>
       </div>

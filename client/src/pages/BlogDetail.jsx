@@ -8,7 +8,7 @@ import hljs from "highlight.js";
 // ---------- marked + highlight config ----------
 const renderer = new marked.Renderer();
 
-// Ensure all links open safely in a new tab
+// Ensure links open safely in a new tab
 renderer.link = (href, title, text) => {
   const t = title ? ` title="${title}"` : "";
   const safeHref = href ?? "#";
@@ -42,7 +42,7 @@ export default function BlogDetail() {
   // ---------- Fetch post ----------
   useEffect(() => {
     const controller = new AbortController();
-    const run = async () => {
+    (async () => {
       try {
         setLoading(true);
         setErr("");
@@ -58,15 +58,11 @@ export default function BlogDetail() {
         const data = await res.json();
         setPost(data || null);
       } catch (e) {
-        if (e.name !== "AbortError") {
-          setErr(e.message || "Failed to load post");
-        }
+        if (e.name !== "AbortError") setErr(e.message || "Failed to load post");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    };
-
-    run();
+    })();
     return () => controller.abort();
   }, [API_BASE, slug]);
 
@@ -77,7 +73,7 @@ export default function BlogDetail() {
 
     const desc =
       post?.excerpt ||
-      (post?.content ? String(post.content).slice(0, 150) : "") ||
+      (post?.content ? String(post.content).replace(/<[^>]+>/g, "").slice(0, 150) : "") ||
       "Blog post on NextGen CMC.";
 
     let meta = document.querySelector('meta[name="description"]');
@@ -98,62 +94,75 @@ export default function BlogDetail() {
   // ---------- UI states ----------
   if (loading) {
     return (
-      <div style={{ display: "grid", placeItems: "center", height: "50vh" }}>
+      <div className="grid place-items-center h-[50vh]">
         <div
           aria-label="Loading post"
           role="status"
-          style={{
-            width: 36,
-            height: 36,
-            border: "3px solid #ddd",
-            borderTopColor: "#333",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }}
+          className="w-9 h-9 rounded-full border-2 border-neutral-300 border-t-neutral-900 animate-spin"
         />
-        <style>
-          {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
-        </style>
       </div>
     );
   }
 
-  if (err) return <div style={{ padding: 16, color: "crimson" }}>Error: {err}</div>;
-  if (!post) return <div style={{ padding: 16 }}>Not found.</div>;
+  if (err) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-10">
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Error: {err}
+        </div>
+        <Link to="/blog" className="mt-4 inline-block underline">
+          ← Back to Blog
+        </Link>
+      </div>
+    );
+  }
+
+  if (!post) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-10">
+        <p>Not found.</p>
+        <Link to="/blog" className="mt-4 inline-block underline">
+          ← Back to Blog
+        </Link>
+      </div>
+    );
+  }
+
+  const published = post.publishedAt
+    ? new Date(post.publishedAt).toLocaleString()
+    : "Draft";
 
   // ---------- Page ----------
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <p className="mb-4">
-        <Link to="/blog">← Back to Blog</Link>
-      </p>
+    <div className="max-w-4xl mx-auto px-4 py-10">
+      <Link to="/blog" className="text-sm text-neutral-600 hover:underline">
+        ← Back to Blog
+      </Link>
 
-      <h1 className="text-3xl font-bold mb-2">{post.title}</h1>
+      <h1 className="mt-6 text-3xl md:text-4xl font-bold tracking-tight">
+        {post.title}
+      </h1>
 
-      <p className="text-gray-600 mb-2">
-        {post.publishedAt ? new Date(post.publishedAt).toLocaleString() : "Draft"}
-      </p>
-
-      {post.tags?.length ? (
-        <p className="mb-4">
-          <strong>Tags:</strong> {post.tags.join(", ")}
-        </p>
-      ) : null}
+      <div className="mt-2 text-sm text-neutral-500">
+        {published}
+        {Array.isArray(post.tags) && post.tags.length > 0 && (
+          <> • <span className="uppercase tracking-wide">{post.tags.join(", ")}</span></>
+        )}
+      </div>
 
       {post.coverImage ? (
         <img
           src={post.coverImage}
           alt={post.title}
-          className="mb-4"
-          style={{ maxHeight: 420, width: "100%", objectFit: "cover", borderRadius: 8 }}
+          className="mt-6 w-full max-h-[420px] object-cover rounded-lg"
         />
       ) : null}
 
-      <hr className="my-4" />
+      <hr className="my-6 border-neutral-200" />
 
+      {/* Typography plugin makes the content look great */}
       <article
-        style={{ lineHeight: 1.75 }}
-        className="prose"
+        className="prose prose-neutral max-w-none"
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
