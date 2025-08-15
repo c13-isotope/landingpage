@@ -6,11 +6,14 @@ import "./App.css";
 import Navbar from "./components/Navbar";
 import AdminGate from "./components/AdminGate";
 
+// Core pages
 import BlogList from "./pages/BlogList";
 import BlogDetail from "./pages/BlogDetail";
+
+// Admin pages
 import AdminNewBlog from "./pages/AdminNewBlog";
 import AdminPosts from "./pages/AdminPosts";
-import AdminEditBlog from "./pages/AdminEditBlog";
+import AdminBlogEdit from "./pages/AdminBlogEdit"; // NEW (your new editor)
 
 // Static pages
 import About from "./pages/About";
@@ -114,11 +117,12 @@ export default function App() {
               </AdminGate>
             }
           />
+          {/* NEW: edit route matches the file we created */}
           <Route
-            path="/admin/blog/edit/:slug"
+            path="/admin/blog/:slug/edit"
             element={
               <AdminGate>
-                <AdminEditBlog />
+                <AdminBlogEdit />
               </AdminGate>
             }
           />

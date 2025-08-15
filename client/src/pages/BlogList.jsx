@@ -1,6 +1,10 @@
 // client/src/pages/BlogList.jsx
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+
+// New components
+import BlogHero from "../components/BlogHero";
+import PostCard from "../components/PostCard";
 
 export default function BlogList() {
   const [blogs, setBlogs] = useState([]);
@@ -25,6 +29,8 @@ export default function BlogList() {
     if (q) params.set("q", q);
     return `${API_BASE}${basePath}?${params.toString()}`;
   }, [API_BASE, page, q]);
+
+  const navigate = useNavigate();
 
   // read admin key from localStorage on mount (do not expose in code)
   useEffect(() => {
@@ -94,15 +100,7 @@ export default function BlogList() {
     }
   };
 
-  const fmtDate = (d) => {
-    try {
-      return new Date(d).toLocaleDateString();
-    } catch {
-      return "Draft";
-    }
-  };
-
-  const excerpt = (b) => {
+  const makeExcerpt = (b) => {
     if (b.excerpt) return b.excerpt;
     const raw = (b.contentHtml || b.content || "")
       .replace(/<[^>]+>/g, " ")
@@ -141,15 +139,21 @@ export default function BlogList() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-neutral-900 text-center">
-        Latest Blog Posts
-      </h1>
+    <main className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-8">
+      {/* Top banner (image in /public; set VITE_BLOG_BANNER=/blog-hero.jpg) */}
+      <BlogHero
+        title="Blog – OLS"
+        subtitle="Practical, minimalist guidance for Own Label Supply."
+        imageUrl={import.meta.env.VITE_BLOG_BANNER || undefined}
+      />
+
+      {/* Heading (kept for accessibility/SEO) */}
+      <h1 className="sr-only">Latest Blog Posts</h1>
 
       {/* Search + (Admin-only New Post) */}
       <form
         onSubmit={onSubmit}
-        className="mt-6 flex flex-col sm:flex-row gap-3 items-stretch"
+        className="mt-2 flex flex-col sm:flex-row gap-3 items-stretch"
       >
         <input
           type="text"
@@ -191,8 +195,7 @@ export default function BlogList() {
         </div>
       </form>
 
-      {/* Admin key field: only visible to admin so you can update/replace it.
-          To set it the first time, use the Admin screen (/admin/blog). */}
+      {/* Admin key field */}
       {isAdmin && (
         <div className="mt-4">
           <input
@@ -218,52 +221,34 @@ export default function BlogList() {
           No posts{q ? ` for “${q}”` : ""}.
         </div>
       ) : (
-        <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {blogs.map((b) => {
-            const href = `/blog/${encodeURIComponent(b.slug || "")}`;
             const id = b._id || b.id;
+            const slug = encodeURIComponent(b.slug || "");
+            const postForCard = {
+              slug,
+              title: b.title,
+              excerpt: makeExcerpt(b),
+              image: b.image || b.coverImage,
+              rating: typeof b.rating === "number" ? b.rating : undefined,
+              category:
+                (Array.isArray(b.tags) && b.tags.length > 0 && b.tags[0]) || undefined,
+              publishedAt: b.publishedAt,
+              iconEmoji: b.iconEmoji,
+            };
+
             return (
-              <article
+              <PostCard
                 key={id}
-                className="rounded-xl border border-neutral-200 p-5 bg-white hover:shadow-md transition-all"
-              >
-                <div className="flex items-center gap-2 text-xs text-neutral-500">
-                  <time>{fmtDate(b.publishedAt)}</time>
-                  {Array.isArray(b.tags) && b.tags.length > 0 ? (
-                    <span>• {b.tags[0]}</span>
-                  ) : null}
-                </div>
-
-                <h2 className="mt-2 text-lg font-semibold leading-snug">
-                  <Link to={href} className="hover:underline">
-                    {b.title}
-                  </Link>
-                </h2>
-
-                <p className="mt-2 text-sm text-neutral-600">{excerpt(b)}</p>
-
-                <div className="mt-4 flex items-center justify-between">
-                  <Link
-                    to={href}
-                    className="text-sm font-medium text-neutral-900 hover:underline"
-                  >
-                    Read →
-                  </Link>
-
-                  {/* Admin-only: Delete */}
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleDelete(id)}
-                      className="text-xs rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </article>
+                post={postForCard}
+                isAdmin={isAdmin}
+                onRead={(s) => navigate(`/blog/${s}`)}
+                onEdit={(s) => navigate(`/admin/blog/${s}/edit`)}  // EDIT path
+                onDelete={() => handleDelete(id)}                  // DELETE action
+              />
             );
           })}
-        </div>
+        </section>
       )}
 
       {/* Pagination */}
@@ -286,6 +271,6 @@ export default function BlogList() {
           Next
         </button>
       </div>
-    </div>
+    </main>
   );
 }
