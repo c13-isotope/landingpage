@@ -1,18 +1,53 @@
 // client/src/pages/BlogDetail.jsx
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+
 import SubscribeBlock from "../components/SubscribeBlock";
 import CommentsBlock from "../components/CommentsBlock";
 
 const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
 const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
-// helpers that ONLY use list & search (no by-slug)
+// Endpoints (we only rely on list/search so it works with your API today)
 const URL_LIST   = (p) => `${API_BASE}/api/blog/public/list?${p.toString()}`;
 const URL_SEARCH = (p) => `${API_BASE}/api/blog/public/search?${p.toString()}`;
 
+// --- Robust "real HTML?" check ---
+// 1) Quick allowlist of real HTML tags
+const REAL_TAG = /<\/?([a-zA-Z][a-z0-9-]*)\b[^>]*>/g;
+const HTML_TAG_ALLOWLIST = new Set([
+  "p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote","pre","code",
+  "em","strong","a","img","br","hr","table","thead","tbody","tr","th","td",
+  "figure","figcaption","span","div"
+]);
+
+function looksLikeRealHtml(s = "") {
+  const t = String(s || "").trim();
+  if (!t) return false;
+
+  // Quick scan: does it include at least one allowed tag name?
+  let m;
+  while ((m = REAL_TAG.exec(t))) {
+    const tag = (m[1] || "").toLowerCase();
+    if (HTML_TAG_ALLOWLIST.has(tag)) return true;
+  }
+
+  // Fallback: try parsing once and see if any element nodes appear
+  try {
+    const doc = new DOMParser().parseFromString(t, "text/html");
+    // If parsing created any element inside <body>, treat as HTML.
+    return doc && doc.body && doc.body.children && doc.body.children.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// --- Load a post by slug using search → list fallback ---
 async function loadPost(slug, signal) {
-  // 1) Try search first (usually fastest)
+  // 1) Try search first
   try {
     const p = new URLSearchParams({ page: "1", limit: "10", q: slug });
     const r = await fetch(URL_SEARCH(p), { signal });
@@ -24,7 +59,7 @@ async function loadPost(slug, signal) {
     }
   } catch {}
 
-  // 2) Fall back to list (wider grab)
+  // 2) Fall back to list
   try {
     const p = new URLSearchParams({ page: "1", limit: "50" });
     const r = await fetch(URL_LIST(p), { signal });
@@ -89,9 +124,14 @@ export default function BlogDetail() {
   const tags   = Array.isArray(post.tags) ? post.tags : [];
   const rating = typeof post.rating === "number" ? post.rating : null;
 
-  const contentHtml =
-    post.contentHtml ||
-    (post.content ? `<div style="white-space:pre-wrap">${post.content}</div>` : "");
+  // Prefer markdown unless we’re sure it’s real HTML
+  const candidate = (post.contentHtml ?? "").toString();
+  const hasRealHtml = looksLikeRealHtml(candidate);
+
+  // If not real HTML, take first non-empty markdown source
+  const md = !hasRealHtml
+    ? (post.content || post.contentMd || candidate || "")
+    : "";
 
   const faq = Array.isArray(post.faq) ? post.faq : [];
 
@@ -126,10 +166,26 @@ export default function BlogDetail() {
       </div>
 
       {/* Body */}
-      <div
-        className="prose prose-neutral max-w-none mt-8"
-        dangerouslySetInnerHTML={{ __html: contentHtml }}
-      />
+      {hasRealHtml ? (
+        <div
+          className="prose prose-neutral max-w-none mt-8"
+          dangerouslySetInnerHTML={{ __html: candidate }}
+        />
+      ) : (
+        <ReactMarkdown
+          className="prose prose-neutral max-w-none mt-8"
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]} // allow inline HTML inside MD (e.g., <br>)
+          components={{
+            img: (props) => (
+              <img {...props} className="rounded-lg" loading="lazy" decoding="async" />
+            ),
+            a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+          }}
+        >
+          {md || "_No content available._"}
+        </ReactMarkdown>
+      )}
 
       {/* FAQ */}
       {faq.length > 0 && (
