@@ -38,7 +38,9 @@ async function loadForEdit(slug, signal) {
       const exact = items.find((x) => x.slug === wanted);
       if (exact) return exact;
     }
-  } catch {}
+  } catch {
+    /* ignore network errors */
+  }
 
   // list fallback
   try {
@@ -50,7 +52,9 @@ async function loadForEdit(slug, signal) {
       const exact = items.find((x) => x.slug === wanted);
       if (exact) return exact;
     }
-  } catch {}
+  } catch {
+    /* ignore network errors */
+  }
 
   throw new Error("GET by slug failed: post not found");
 }

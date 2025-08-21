@@ -6,7 +6,6 @@ const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 export default function CommentsBlock({ slug, postId }) {
   const [list, setList] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   const [name, setName] = useState("");
@@ -20,7 +19,6 @@ export default function CommentsBlock({ slug, postId }) {
     const c = new AbortController();
     (async () => {
       try {
-        setLoading(true);
         setErr("");
         const res = await fetch(`${API_BASE}/api/blog/public/comments?slug=${encodeURIComponent(slug)}`, { signal: c.signal });
         if (!res.ok) { setList([]); return; } // silently ignore if not implemented
@@ -28,8 +26,6 @@ export default function CommentsBlock({ slug, postId }) {
         setList(Array.isArray(data.items) ? data.items : []);
       } catch (e) {
         if (e.name !== "AbortError") setErr("");
-      } finally {
-        if (!c.signal.aborted) setLoading(false);
       }
     })();
     return () => c.abort();

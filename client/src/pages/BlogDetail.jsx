@@ -57,7 +57,9 @@ async function loadPost(slug, signal) {
       const found = items.find((x) => x.slug === slug);
       if (found) return found;
     }
-  } catch {}
+  } catch {
+    /* ignore network errors */
+  }
 
   // 2) Fall back to list
   try {
@@ -69,7 +71,9 @@ async function loadPost(slug, signal) {
       const found = items.find((x) => x.slug === slug);
       if (found) return found;
     }
-  } catch {}
+  } catch {
+    /* ignore network errors */
+  }
 
   throw new Error("Post not found");
 }
