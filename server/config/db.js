@@ -14,19 +14,27 @@ const connectDB = async () => {
       w: "majority",
     });
 
-    console.log("✅ MongoDB connected");
+    if (process.env.NODE_ENV !== "production") {
+      console.log("✅ MongoDB connected");
+    }
 
     // (Optional) verify the text index once; ok if collection doesn't exist yet
     try {
       const indexes = await mongoose.connection
         .collection("messages")
         .indexes();
-      console.log("Message indexes:", indexes);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Message indexes:", indexes);
+      }
     } catch {
-      console.log("Message collection not created yet (no docs).");
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Message collection not created yet (no docs).");
+      }
     }
   } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("❌ MongoDB connection failed:", error.message);
+    }
     process.exit(1);
   }
 };

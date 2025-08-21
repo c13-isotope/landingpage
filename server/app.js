@@ -56,8 +56,10 @@ const allowListRaw = allowAll
 const allowList = allowListRaw.map(normalizeOrigin);
 
 // Helpful diagnostics at boot
-console.log("CORS allowListRaw       =", JSON.stringify(allowListRaw));
-console.log("CORS allowListNormalized =", JSON.stringify(allowList));
+if (process.env.NODE_ENV !== "production") {
+  console.log("CORS allowListRaw       =", JSON.stringify(allowListRaw));
+  console.log("CORS allowListNormalized =", JSON.stringify(allowList));
+}
 
 const corsOrigin = (origin, cb) => {
   // Allow server-to-server / curl / same-host (no Origin header)
@@ -72,11 +74,13 @@ const corsOrigin = (origin, cb) => {
     return cb(null, true);
   }
 
-  console.warn(
-    `CORS BLOCKED → incoming="${origin}" normalized="${incoming}" not in ${JSON.stringify(
-      allowList
-    )}`
-  );
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(
+      `CORS BLOCKED → incoming="${origin}" normalized="${incoming}" not in ${JSON.stringify(
+        allowList
+      )}`
+    );
+  }
   return cb(new Error(`CORS blocked for origin: ${origin}`));
 };
 
@@ -99,7 +103,7 @@ app.use((req, res, next) => {
 
 // 2) Sanity logs for env
 ["MONGO_URI", "ADMIN_KEY"].forEach((k) => {
-  if (!process.env[k]) {
+  if (!process.env[k] && process.env.NODE_ENV !== "production") {
     console.warn(`⚠️  Missing ${k} in environment. Set it in .env or hosting config.`);
   }
 });
@@ -139,7 +143,9 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, _req, res, _next) => {
-  console.error("Unhandled error:", err);
+  if (process.env.NODE_ENV !== "production") {
+    console.error("Unhandled error:", err);
+  }
   const status = err.status || 500;
   res.status(status).json({
     error: status === 500 ? "internal server error" : err.message,
@@ -149,5 +155,7 @@ app.use((err, _req, res, _next) => {
 // 5) Start server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`🚀 Server running on port ${PORT}`);
+  }
 });

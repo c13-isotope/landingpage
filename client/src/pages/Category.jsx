@@ -35,7 +35,7 @@ export default function Category() {
       }
     })();
     return () => controller.abort();
-  }, [endpoint]);
+  }, [endpoint, slug]);
 
   if (loading) {
     return (
