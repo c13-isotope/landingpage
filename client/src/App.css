@@ -1,7 +1,0 @@
-/* client/src/App.css (Tailwind v3) */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* if you enable the typography plugin */
-.prose img { border-radius: .5rem; }

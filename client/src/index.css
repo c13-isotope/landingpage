@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Safe, tiny defaults so the page doesn't look naked during hiccups */
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+img { max-width: 100%; height: auto; }
+
+/* If you use the typography plugin */
+.prose img { border-radius: .5rem; }

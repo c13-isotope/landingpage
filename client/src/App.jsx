@@ -1,10 +1,10 @@
 // client/src/App.jsx
 import { useEffect, useState } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import "./App.css";
 
-import Navbar from "./components/Navbar";
+import Layout from "./components/Layout";
 import AdminGate from "./components/AdminGate";
+import Navbar from "./components/Navbar"; // used inside Layout, but harmless to keep
 
 // Core pages
 import BlogList from "./pages/BlogList";
@@ -13,7 +13,7 @@ import BlogDetail from "./pages/BlogDetail";
 // Admin pages
 import AdminNewBlog from "./pages/AdminNewBlog";
 import AdminPosts from "./pages/AdminPosts";
-import AdminBlogEdit from "./pages/AdminBlogEdit"; // NEW (your new editor)
+import AdminBlogEdit from "./pages/AdminBlogEdit";
 
 // Static pages
 import About from "./pages/About";
@@ -27,23 +27,22 @@ import Terms from "./pages/Terms";
 // Category listing
 import Category from "./pages/Category";
 
-// Build a safe API base (strip trailing slash). If empty, relative paths work with the dev proxy.
-const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+// In dev we use the Vite proxy, so use RELATIVE API paths (no base URL)
+const API_BASE = ""; // keep empty to ensure /api/... goes through the vite proxy
 
 function Home() {
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(!!API_BASE);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    if (!API_BASE) return; // skip fetch if not configured
     const controller = new AbortController();
     (async () => {
       try {
         setLoading(true);
         setErr("");
-        const res = await fetch(`${API_BASE}/api/message`, { signal: controller.signal });
+        // ✅ relative URL — will proxy to http://localhost:8080
+        const res = await fetch(`/api/message`, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setMessage(data?.message ?? "");
@@ -62,17 +61,16 @@ function Home() {
       <p className="mt-2 text-neutral-600">Modern regulatory CMC blog & tools.</p>
 
       <div className="mt-6 rounded-xl border border-neutral-200 p-4">
-        {!API_BASE ? (
-          <p className="text-sm text-neutral-500">
-            Tip: Set <code>VITE_API_BASE</code> in <code>client/.env</code> or use a Vite proxy to show the API message here.
-          </p>
-        ) : loading ? (
+        {loading ? (
           <p className="text-sm text-neutral-500">Loading…</p>
         ) : err ? (
           <p className="text-sm text-red-600">Error: {err}</p>
         ) : (
           <p className="text-sm">📖 {message}</p>
         )}
+
+        {/* TEMP: remove whenever you like */}
+        {/* <div className="bg-black text-white p-4 rounded mt-4">Tailwind test</div> */}
       </div>
     </div>
   );
@@ -80,63 +78,31 @@ function Home() {
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-white text-neutral-900">
-      <Navbar />
+    <Layout>
+      <Routes>
+        {/* Core */}
+        <Route index element={<Home />} />
+        <Route path="/blog" element={<BlogList />} />
+        <Route path="/blog/:slug" element={<BlogDetail />} />
+        <Route path="/category/:slug" element={<Category />} />
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <Routes>
-          {/* Core */}
-          <Route index element={<Home />} />
-          <Route path="/blog" element={<BlogList />} />
-          <Route path="/blog/:slug" element={<BlogDetail />} />
-          <Route path="/category/:slug" element={<Category />} />
+        {/* Static pages */}
+        <Route path="/about" element={<About />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/resources" element={<Resources />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/newsletter" element={<Newsletter />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<Terms />} />
 
-          {/* Static pages */}
-          <Route path="/about" element={<About />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/resources" element={<Resources />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/newsletter" element={<Newsletter />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<Terms />} />
+        {/* Admin */}
+        <Route path="/admin/blog" element={<AdminGate><AdminPosts /></AdminGate>} />
+        <Route path="/admin/blog/new" element={<AdminGate><AdminNewBlog /></AdminGate>} />
+        <Route path="/admin/blog/:slug/edit" element={<AdminGate><AdminBlogEdit /></AdminGate>} />
 
-          {/* Admin (UI-gated; backend still checks x-admin-key) */}
-          <Route
-            path="/admin/blog"
-            element={
-              <AdminGate>
-                <AdminPosts />
-              </AdminGate>
-            }
-          />
-          <Route
-            path="/admin/blog/new"
-            element={
-              <AdminGate>
-                <AdminNewBlog />
-              </AdminGate>
-            }
-          />
-          {/* NEW: edit route matches the file we created */}
-          <Route
-            path="/admin/blog/:slug/edit"
-            element={
-              <AdminGate>
-                <AdminBlogEdit />
-              </AdminGate>
-            }
-          />
-
-          {/* SPA fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-
-      <footer className="border-t border-neutral-200">
-        <div className="max-w-6xl mx-auto px-4 py-6 text-sm text-neutral-500">
-          © {new Date().getFullYear()} NextGen CMC. All rights reserved.
-        </div>
-      </footer>
-    </div>
+        {/* SPA fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Layout>
   );
 }

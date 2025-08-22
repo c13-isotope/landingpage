@@ -8,115 +8,181 @@ import rehypeRaw from "rehype-raw";
 import SubscribeBlock from "../components/SubscribeBlock";
 import CommentsBlock from "../components/CommentsBlock";
 
-const RAW_API_BASE = import.meta.env.VITE_API_BASE || "";
-const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+/* ---------------- robust normalization ---------------- */
+function toNFC(s = "") {
+  try { return s.normalize("NFC"); } catch { return s; }
+}
+function safeDecode(s = "") {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
+function normalizeSlug(s = "") {
+  // 1) NFC + decode
+  let t = toNFC(String(s ?? ""));
+  t = safeDecode(t);
 
-// Endpoints (we only rely on list/search so it works with your API today)
-const URL_LIST   = (p) => `${API_BASE}/api/blog/public/list?${p.toString()}`;
-const URL_SEARCH = (p) => `${API_BASE}/api/blog/public/search?${p.toString()}`;
+  // 2) lowercase + trim
+  t = t.trim().toLowerCase();
 
-// --- Robust "real HTML?" check ---
-// 1) Quick allowlist of real HTML tags
-const REAL_TAG = /<\/?([a-zA-Z][a-z0-9-]*)\b[^>]*>/g;
-const HTML_TAG_ALLOWLIST = new Set([
-  "p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote","pre","code",
-  "em","strong","a","img","br","hr","table","thead","tbody","tr","th","td",
-  "figure","figcaption","span","div"
-]);
+  // 3) convert ALL unicode dash variants to hyphen-minus
+  //    (‐ \u2010, - \u2011, ‒ \u2012, – \u2013, — \u2014, ― \u2015, ⁻ \u207B, ˗ \u02D7, minus sign \u2212, figure dash \u2012)
+  t = t.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u207B\u02D7\u2212]+/g, "-");
 
-function looksLikeRealHtml(s = "") {
-  const t = String(s || "").trim();
-  if (!t) return false;
+  // 4) collapse any non a-z0-9 to hyphen
+  t = t.replace(/[^a-z0-9]+/g, "-");
 
-  // Quick scan: does it include at least one allowed tag name?
-  let m;
-  while ((m = REAL_TAG.exec(t))) {
-    const tag = (m[1] || "").toLowerCase();
-    if (HTML_TAG_ALLOWLIST.has(tag)) return true;
-  }
+  // 5) strip leading/trailing hyphens
+  t = t.replace(/^-+|-+$/g, "");
 
-  // Fallback: try parsing once and see if any element nodes appear
+  return t;
+}
+const kebab = (s="") => normalizeSlug(String(s || ""));
+
+/* --------- HTML detection (unchanged) --------- */
+const REAL_TAG=/<\/?([a-zA-Z][a-z0-9-]*)\b[^>]*>/g;
+const ALLOW=new Set(["p","h1","h2","h3","h4","h5","h6","ul","ol","li","blockquote","pre","code","em","strong","a","img","br","hr","table","thead","tbody","tr","th","td","figure","figcaption","span","div"]);
+function looksLikeRealHtml(s=""){const t=String(s||"").trim(); if(!t) return false; let m; while((m=REAL_TAG.exec(t))){if(ALLOW.has((m[1]||"").toLowerCase())) return true;} try{const d=new DOMParser().parseFromString(t,"text/html");return d?.body?.children?.length>0;}catch{return false;}}
+
+/* --------- endpoints (relative → Vite proxy) --------- */
+const listUrl   = ()  => `/api/blog/public/list?${new URLSearchParams({page:"1",limit:"50"})}`;
+const searchUrl = (q) => `/api/blog/public/search?${new URLSearchParams({page:"1",limit:"20",q})}`;
+
+/* --------- matching helpers --------- */
+const allKeysFor = (p) => {
+  const keys = [
+    normalizeSlug(p.slug),
+    normalizeSlug(p.urlSlug),
+    normalizeSlug(p.seoSlug),
+    kebab(p.title),
+  ].filter(Boolean);
+  return Array.from(new Set(keys));
+};
+
+function strongMatch(items, rawSlug){
+  const target = normalizeSlug(rawSlug);
+
+  // 1) exact on any normalized key
+  let hit = items.find(p => allKeysFor(p).some(k => k === target));
+  if (hit) return hit;
+
+  // 2) startsWith / target startsWith key
+  hit = items.find(p => allKeysFor(p).some(k => k.startsWith(target) || target.startsWith(k)));
+  if (hit) return hit;
+
+  // 3) includes / target includes key
+  hit = items.find(p => allKeysFor(p).some(k => k.includes(target) || target.includes(k)));
+  if (hit) return hit;
+
+  return null;
+}
+
+/* ---------- data fetch ---------- */
+async function fetchItems(url, signal){
   try {
-    const doc = new DOMParser().parseFromString(t, "text/html");
-    // If parsing created any element inside <body>, treat as HTML.
-    return doc && doc.body && doc.body.children && doc.body.children.length > 0;
+    const r = await fetch(url, { signal });
+    if (!r.ok) return { items: [] };
+    const d = await r.json();
+    return { items: Array.isArray(d?.items) ? d.items : [] };
   } catch {
-    return false;
+    return { items: [] };
   }
 }
 
-// --- Load a post by slug using search → list fallback ---
-async function loadPost(slug, signal) {
-  // 1) Try search first
-  try {
-    const p = new URLSearchParams({ page: "1", limit: "10", q: slug });
-    const r = await fetch(URL_SEARCH(p), { signal });
-    if (r.ok) {
-      const d = await r.json();
-      const items = d?.items || [];
-      const found = items.find((x) => x.slug === slug);
-      if (found) return found;
-    }
-  } catch {
-    /* ignore network errors */
-  }
+async function loadPostAggressive(slug, signal, setDebug){
+  const raw = String(slug || "");
+  const queryFromSlug = safeDecode(raw).replace(/[-_]+/g, " ").trim();
+  const corePrefix    = raw.slice(0, 30);
 
-  // 2) Fall back to list
-  try {
-    const p = new URLSearchParams({ page: "1", limit: "50" });
-    const r = await fetch(URL_LIST(p), { signal });
-    if (r.ok) {
-      const d = await r.json();
-      const items = d?.items || [];
-      const found = items.find((x) => x.slug === slug);
-      if (found) return found;
-    }
-  } catch {
-    /* ignore network errors */
+  // A) list first
+  {
+    const { items } = await fetchItems(listUrl(), signal);
+    setDebug?.(items);
+    const hit = strongMatch(items, raw);
+    if (hit) return hit;
+  }
+  // B) search raw
+  {
+    const { items } = await fetchItems(searchUrl(raw), signal);
+    setDebug?.(items);
+    const hit = strongMatch(items, raw);
+    if (hit) return hit;
+  }
+  // C) search with spaces
+  if (queryFromSlug && queryFromSlug !== raw) {
+    const { items } = await fetchItems(searchUrl(queryFromSlug), signal);
+    setDebug?.(items);
+    const hit = strongMatch(items, queryFromSlug);
+    if (hit) return hit;
+  }
+  // D) search core prefix
+  {
+    const { items } = await fetchItems(searchUrl(corePrefix), signal);
+    setDebug?.(items);
+    const hit = strongMatch(items, corePrefix);
+    if (hit) return hit;
   }
 
   throw new Error("Post not found");
 }
 
-export default function BlogDetail() {
+/* ---------- component ---------- */
+export default function BlogDetail(){
   const { slug } = useParams();
   const [post, setPost] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [debugItems, setDebugItems] = useState(null);
 
-  useEffect(() => {
+  useEffect(()=>{
     const c = new AbortController();
-    (async () => {
-      try {
-        setLoading(true);
-        setErr("");
-        const p = await loadPost(slug, c.signal);
+    (async ()=>{
+      try{
+        setLoading(true); setErr("");
+        const p = await loadPostAggressive(slug, c.signal, setDebugItems);
         setPost(p);
         document.title = p?.title ? `${p.title} | Blog | NextGen CMC` : "Blog | NextGen CMC";
-      } catch (e) {
+      }catch(e){
         if (e.name !== "AbortError") setErr(e.message || "Failed to load");
-      } finally {
+      }finally{
         if (!c.signal.aborted) setLoading(false);
       }
     })();
-    return () => c.abort();
-  }, [slug]);
+    return ()=>c.abort();
+  },[slug]);
 
   if (loading) {
     return (
-      <div className="grid place-items-center h-[50vh]">
+      <div className="grid place-items-center h-[40vh]">
         <div className="w-9 h-9 rounded-full border-2 border-neutral-300 border-t-neutral-900 animate-spin" />
       </div>
     );
   }
 
   if (err || !post) {
+    const suggestions = Array.isArray(debugItems) ? debugItems.slice(0,8) : [];
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {err || "Not found"}
         </div>
-        <div className="mt-4">
+
+        {suggestions.length > 0 && (
+          <div className="mt-6 rounded-md border border-neutral-200 bg-white p-4">
+            <p className="text-sm text-neutral-700">Try one of these slugs the API returned:</p>
+            <ul className="mt-2 list-disc pl-6">
+              {suggestions.map((p,i)=>{
+                const s = allKeysFor(p)[0] || kebab(p.title) || String(p._id || p.id || i);
+                return (
+                  <li key={i}>
+                    <Link className="underline" to={`/blog/${s}`}>{s}</Link>{" "}
+                    <span className="text-neutral-500">– {p.title}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-6">
           <Link to="/blog" className="underline">Back to blog</Link>
         </div>
       </div>
@@ -128,30 +194,15 @@ export default function BlogDetail() {
   const tags   = Array.isArray(post.tags) ? post.tags : [];
   const rating = typeof post.rating === "number" ? post.rating : null;
 
-  // Prefer markdown unless we’re sure it’s real HTML
-  const candidate = (post.contentHtml ?? "").toString();
-  const hasRealHtml = looksLikeRealHtml(candidate);
-
-  // If not real HTML, take first non-empty markdown source
-  const md = !hasRealHtml
-    ? (post.content || post.contentMd || candidate || "")
-    : "";
-
-  const faq = Array.isArray(post.faq) ? post.faq : [];
+  const candidate = String(post.contentHtml ?? "");
+  const hasHtml   = looksLikeRealHtml(candidate);
+  const md        = !hasHtml ? (post.content || post.contentMd || candidate || "") : "";
+  const faq       = Array.isArray(post.faq) ? post.faq : [];
 
   return (
     <article className="max-w-3xl mx-auto">
-      {/* Hero */}
       <div className="rounded-2xl overflow-hidden border border-neutral-200 bg-white">
-        {cover && (
-          <img
-            src={cover}
-            alt={post.title}
-            className="w-full max-h-[380px] object-cover"
-            crossOrigin="anonymous"
-            referrerPolicy="no-referrer"
-          />
-        )}
+        {cover && <img src={cover} alt={post.title} className="w-full max-h-[380px] object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />}
         <div className="p-6 md:p-8">
           <div className="flex items-center gap-3 text-4xl">{icon}</div>
           <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-tight">{post.title}</h1>
@@ -161,29 +212,22 @@ export default function BlogDetail() {
             {!!tags.length && <span>• {tags.join(", ")}</span>}
             {rating != null && (
               <span aria-label={`Rated ${rating} out of 5`}>
-                • {"★★★★★".slice(0, Math.round(rating))}{" "}
-                <span className="ml-1">{rating.toFixed?.(1)}</span>
+                • {"★★★★★".slice(0, Math.round(rating))} <span className="ml-1">{rating.toFixed?.(1)}</span>
               </span>
             )}
           </div>
         </div>
       </div>
 
-      {/* Body */}
-      {hasRealHtml ? (
-        <div
-          className="prose prose-neutral max-w-none mt-8"
-          dangerouslySetInnerHTML={{ __html: candidate }}
-        />
+      {hasHtml ? (
+        <div className="prose prose-neutral max-w-none mt-8" dangerouslySetInnerHTML={{ __html: candidate }} />
       ) : (
         <ReactMarkdown
           className="prose prose-neutral max-w-none mt-8"
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]} // allow inline HTML inside MD (e.g., <br>)
+          rehypePlugins={[rehypeRaw]}
           components={{
-            img: (props) => (
-              <img {...props} className="rounded-lg" loading="lazy" decoding="async" />
-            ),
+            img: (props) => <img {...props} className="rounded-lg" loading="lazy" decoding="async" />,
             a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
           }}
         >
@@ -191,20 +235,15 @@ export default function BlogDetail() {
         </ReactMarkdown>
       )}
 
-      {/* FAQ */}
-      {faq.length > 0 && (
+      {faq.length>0 && (
         <section className="mt-10">
           <h2 className="text-xl font-semibold">Questions & Answers</h2>
           <div className="mt-4 divide-y rounded-xl border border-neutral-200">
-            {faq.map((item, idx) => (
-              <details key={idx} className="p-4 group">
-                <summary className="cursor-pointer font-medium list-none">
-                  {item.q || item.question || `Question ${idx + 1}`}
-                </summary>
+            {faq.map((f,i)=>(
+              <details key={i} className="p-4 group">
+                <summary className="cursor-pointer font-medium list-none">{f.q || f.question || `Question ${i+1}`}</summary>
                 <div className="mt-2 text-neutral-700">
-                  {(item.a || item.answer || "").split(/\n{2,}/).map((p, i) => (
-                    <p key={i} className="mt-2 first:mt-0">{p}</p>
-                  ))}
+                  {(f.a || f.answer || "").split(/\n{2,}/).map((p,idx)=><p key={idx} className="mt-2 first:mt-0">{p}</p>)}
                 </div>
               </details>
             ))}
@@ -212,17 +251,15 @@ export default function BlogDetail() {
         </section>
       )}
 
-      {/* Footer blocks */}
-      <section className="mt-12">
-        <SubscribeBlock />
-      </section>
+      <section className="mt-12"><SubscribeBlock/></section>
       <section className="mt-8">
-        <CommentsBlock slug={post.slug} postId={post._id || post.id} />
+        <CommentsBlock
+          slug={normalizeSlug(post.slug || post.urlSlug || post.seoSlug || kebab(post.title))}
+          postId={post._id || post.id}
+        />
       </section>
 
-      <div className="mt-10">
-        <Link to="/blog" className="underline">← Back to blog</Link>
-      </div>
+      <div className="mt-10"><Link to="/blog" className="underline">← Back to blog</Link></div>
     </article>
   );
 }

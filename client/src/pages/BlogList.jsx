@@ -1,10 +1,17 @@
-// client/src/pages/BlogList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-// New components
 import BlogHero from "../components/BlogHero";
 import PostCard from "../components/PostCard";
+
+/* helpers */
+const norm  = (s="") => decodeURIComponent(String(s).trim().toLowerCase());
+const kebab = (s="") => norm(s).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const safeSlug = (p) =>
+  (p?.slug && String(p.slug).trim()) ||
+  (p?.urlSlug && String(p.urlSlug).trim()) ||
+  (p?.seoSlug && String(p.seoSlug).trim()) ||
+  kebab(p?.title || "");
 
 export default function BlogList() {
   const [blogs, setBlogs] = useState([]);
@@ -12,7 +19,6 @@ export default function BlogList() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // admin
   const [adminKey, setAdminKey] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -32,7 +38,6 @@ export default function BlogList() {
 
   const navigate = useNavigate();
 
-  // read admin key from localStorage on mount (do not expose in code)
   useEffect(() => {
     const key = localStorage.getItem("adminKey") || "";
     setAdminKey(key);
@@ -113,11 +118,7 @@ export default function BlogList() {
   if (loading) {
     return (
       <div className="grid place-items-center h-[50vh]">
-        <div
-          aria-label="Loading posts"
-          role="status"
-          className="w-9 h-9 rounded-full border-2 border-neutral-300 border-t-neutral-900 animate-spin"
-        />
+        <div aria-label="Loading posts" role="status" className="w-9 h-9 rounded-full border-2 border-neutral-300 border-t-neutral-900 animate-spin" />
       </div>
     );
   }
@@ -127,10 +128,7 @@ export default function BlogList() {
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           Error: {err}
-          <button
-            className="ml-3 inline-flex items-center rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-100"
-            onClick={() => window.location.reload()}
-          >
+          <button className="ml-3 inline-flex items-center rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-100" onClick={() => window.location.reload()}>
             Retry
           </button>
         </div>
@@ -140,21 +138,15 @@ export default function BlogList() {
 
   return (
     <main className="max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-8">
-      {/* Top banner (image in /public; set VITE_BLOG_BANNER=/blog-hero.jpg) */}
       <BlogHero
         title="Blog – OLS"
         subtitle="Practical, minimalist guidance for Own Label Supply."
         imageUrl={import.meta.env.VITE_BLOG_BANNER || undefined}
       />
 
-      {/* Heading (kept for accessibility/SEO) */}
       <h1 className="sr-only">Latest Blog Posts</h1>
 
-      {/* Search + (Admin-only New Post) */}
-      <form
-        onSubmit={onSubmit}
-        className="mt-2 flex flex-col sm:flex-row gap-3 items-stretch"
-      >
+      <form onSubmit={onSubmit} className="mt-2 flex flex-col sm:flex-row gap-3 items-stretch">
         <input
           type="text"
           name="q"
@@ -164,11 +156,7 @@ export default function BlogList() {
           className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
         />
         <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg border border-neutral-300 px-3 py-2 hover:bg-neutral-50"
-          >
+          <button type="submit" disabled={loading} className="rounded-lg border border-neutral-300 px-3 py-2 hover:bg-neutral-50">
             Search
           </button>
           {q && (
@@ -182,20 +170,14 @@ export default function BlogList() {
               Clear
             </button>
           )}
-
-          {/* Admin-only: New Post */}
           {isAdmin && (
-            <Link
-              to="/admin/blog/new"
-              className="rounded-lg bg-black text-white px-3 py-2 hover:bg-neutral-800"
-            >
+            <Link to="/admin/blog/new" className="rounded-lg bg-black text-white px-3 py-2 hover:bg-neutral-800">
               + New Post
             </Link>
           )}
         </div>
       </form>
 
-      {/* Admin key field */}
       {isAdmin && (
         <div className="mt-4">
           <input
@@ -209,65 +191,47 @@ export default function BlogList() {
             }}
             className="w-full max-w-xs rounded-lg border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-300"
           />
-          <p className="mt-1 text-xs text-neutral-500">
-            Admin mode is active on this browser. Keep your key private.
-          </p>
+          <p className="mt-1 text-xs text-neutral-500">Admin mode is active on this browser. Keep your key private.</p>
         </div>
       )}
 
-      {/* List */}
       {blogs.length === 0 ? (
-        <div className="mt-10 text-center text-neutral-500">
-          No posts{q ? ` for “${q}”` : ""}.
-        </div>
+        <div className="mt-10 text-center text-neutral-500">No posts{q ? ` for “${q}”` : ""}.</div>
       ) : (
         <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {blogs.map((b) => {
             const id = b._id || b.id;
-            const slug = encodeURIComponent(b.slug || "");
+            const slug = safeSlug(b); // ✅ do NOT encode; keep it readable and matchable
             const postForCard = {
               slug,
               title: b.title,
               excerpt: makeExcerpt(b),
               image: b.image || b.coverImage,
               rating: typeof b.rating === "number" ? b.rating : undefined,
-              category:
-                (Array.isArray(b.tags) && b.tags.length > 0 && b.tags[0]) || undefined,
+              category: (Array.isArray(b.tags) && b.tags[0]) || undefined,
               publishedAt: b.publishedAt,
               iconEmoji: b.iconEmoji,
             };
-
             return (
               <PostCard
-                key={id}
+                key={id || slug}
                 post={postForCard}
                 isAdmin={isAdmin}
                 onRead={(s) => navigate(`/blog/${s}`)}
-                onEdit={(s) => navigate(`/admin/blog/${s}/edit`)}  // EDIT path
-                onDelete={() => handleDelete(id)}                  // DELETE action
+                onEdit={(s) => navigate(`/admin/blog/${s}/edit`)}
+                onDelete={() => handleDelete(id)}
               />
             );
           })}
         </section>
       )}
 
-      {/* Pagination */}
       <div className="mt-8 flex items-center justify-center gap-3 text-sm">
-        <button
-          onClick={() => setPage(page - 1)}
-          disabled={page <= 1 || loading}
-          className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50"
-        >
+        <button onClick={() => setPage(page - 1)} disabled={page <= 1 || loading} className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50">
           Previous
         </button>
-        <span className="text-neutral-600">
-          Page {page} of {totalPages}
-        </span>
-        <button
-          onClick={() => setPage(page + 1)}
-          disabled={page >= totalPages || loading}
-          className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50"
-        >
+        <span className="text-neutral-600">Page {page} of {totalPages}</span>
+        <button onClick={() => setPage(page + 1)} disabled={page >= totalPages || loading} className="rounded-md border border-neutral-300 px-3 py-1.5 disabled:opacity-40 hover:bg-neutral-50">
           Next
         </button>
       </div>
